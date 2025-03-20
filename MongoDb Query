@@ -1,0 +1,165 @@
+{
+    "collection": "products",
+    "aggregate": [
+        {
+            "$match": {
+                "source": "plutus",
+                "target": {
+                    "$elemMatch": {
+                        "title.value": { "$in": [  
+                            "US CPA",
+                            "CMA US",
+                            "ACCA Tests",
+                            "ACCA",
+                            "CFA",
+                            "IFRS"
+                        ]},
+                        "isPrimary": true
+                    }
+                }
+            }
+        },
+        {
+            "$project": {
+                "_id": 1,
+                "source": 1,
+                "coursename": "$title",
+                "cohortnumber": "$classProperties.cohortNumber"
+            }
+        },
+        {
+            "$lookup": {
+                "from": "trans_logs",
+                "localField": "_id",
+                "foreignField": "products.pid",
+                "as": "product_transactions"
+            }
+        },
+        { "$unwind": { "path": "$product_transactions", "preserveNullAndEmptyArrays": true } },
+        {
+            "$match": {
+                "product_transactions.status": { "$in": ["success", "partial-refund", "emandatePending", "emandateAuthSuccess", "loggedoutPaid", "eMandateFailed"] },
+                "product_transactions.payment.amount": { "$gt": 0 },
+                "product_transactions.createdOn": { "$gt": { "$date": "2024-06-01T00:00:00Z" } }
+            }
+        },
+        {
+            "$project": {
+                "_id": 1,
+                "source": 1,
+                "status": 1,
+                "pid": "$product_transactions.products.pid",
+                "payment_amount": "$product_transactions.payment.amount",
+                "sid": "$product_transactions.sid",
+                "coursename": 1,
+                "cohortnumber": 1
+            }
+        },
+        {
+            "$lookup": {
+                "from": "students",
+                "localField": "sid",
+                "foreignField": "_id",
+                "as": "student_details"
+            }
+        },
+        { "$unwind": { "path": "$student_details", "preserveNullAndEmptyArrays": true } },
+        {
+            "$match": {
+                "student_details.email": { "$not": { "$regex": "@testbook", "$options": "i" } }
+            }
+        },
+        {
+            "$match": {
+                "student_details.email": { "$nin": ["anupambera015@gmail.com", "hpspatial@gmail.com"] }
+            }
+        },
+        {
+            "$project": {
+                "_id": 1,
+                "source": 1,
+                "status": 1,
+                "cohortnumber": 1,
+                "coursename": 1,
+                "payment_amount": 1,
+                "student_name": "$student_details.name",
+                "student_email": "$student_details.email",
+                "student_mobile": "$student_details.mobile",
+                "student_id": "$student_details._id",
+                "isPaidstudent": "$student_details.isPaidUser"
+            }
+        },
+        {
+            "$lookup": {
+                "from": "test_submission",
+                "localField": "student_id",
+                "foreignField": "sid",
+                "as": "student_testdetails"
+            }
+        },
+        { "$unwind": { "path": "$student_testdetails", "preserveNullAndEmptyArrays": true } },
+        
+        {
+            "$lookup": {
+                "from": "tests",
+                "localField": "student_testdetails.tid",
+                "foreignField": "_id",
+                "as": "matched_tests"
+            }
+        },
+        { "$unwind": { "path": "$matched_tests", "preserveNullAndEmptyArrays": true } },
+        
+        {
+            "$match": {
+                "matched_tests.target": {
+                    "$elemMatch": {
+                        "title.value": { "$in": [  
+                            "US CPA",
+                            "CMA US",
+                            "ACCA Tests",
+                            "ACCA",
+                            "CFA",
+                            "IFRS"
+                        ]}
+                    }
+                }
+            }
+        },
+        {
+            "$project": {
+                "_id": 1,
+                "source": 1,
+                "status": 1,
+                "cohortnumber": 1,
+                "coursename": 1,
+                "testname": "$matched_tests.title.value",
+                "payment_amount": 1,
+                "student_name": 1,
+                "student_email": 1,
+                "student_mobile": 1,
+                "student_id": 1,
+                "test_id": "$matched_tests._id",
+                "isPaidstudent": 1,
+                "student_marks": "$student_testdetails.marks",
+                "plutus_product_id": "$pid",
+                "student_attemptNo": "$student_testdetails.attemptNo",
+                "student_timetaken": "$student_testdetails.timeTaken",
+                "correctanswer": "$student_testdetails.correct",
+                "totalAnswered": "$student_testdetails.totalAnswered",
+                "skippedQuestions": "$student_testdetails.skipped",
+                "wrongAnswered": "$student_testdetails.wrong",
+                "starttime": { "$ifNull": ["$matched_tests.startTime", "N/A"] },
+                "endtime": { "$ifNull": ["$matched_tests.endTime", "N/A"] },
+                "TestliveDate": { "$ifNull": ["$matched_tests.relDate", "N/A"] },
+                "Free": { "$ifNull": ["$matched_tests.isFree", false] },
+                "TotalQuestionCount": {
+                    "$reduce": {
+                        "input": "$matched_tests.sections",
+                        "initialValue": 0,
+                        "in": { "$add": ["$$value", "$$this.qCount"] }
+                    }
+                }
+            }
+        }
+    ]
+}
